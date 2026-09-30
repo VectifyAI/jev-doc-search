@@ -10,7 +10,7 @@ With Jev, retrieval is a classification problem: put the document in `state`, as
 | --- | --- | --- |
 | More than 255 pages | MMDetection 2.18.0 docs: 468 pages, ≈249k tokens | A `Choice` takes at most 255 options, and the text is 8× one request |
 | Fewer than 255 pages, but too long for one request | Best Buy FY2023 10-K: 75 pages, ≈66k tokens | `state` plus the longest question must fit in 32k tokens, which is about 40 pages |
-| Fits, but the flat choice misses | Xiaomi Mi phone user guide: 37 pages, ≈7k tokens | "How many steps are needed for editing an SMS?" The answer is on page 22. Flat `Choice` ranks page 23 first (0.29) and page 22 fifth; pages 19 to 23 all discuss SMS |
+| Fits, but the flat choice misses | Xiaomi Mi phone user guide: 37 pages, ≈7k tokens | "How many steps are needed for editing an SMS?" The answer is on page 22. Over two runs, flat `Choice` puts a wrong page first (page 23 at 0.29, then page 19 at 0.32) and page 22 fifth, then third; pages 19 to 23 all discuss SMS |
 
 In the benchmark, 23 of 34 documents fit in one request (the largest is 44 pages). None of the six annual reports (72 to 198 pages) do. The third case is rare: on the 39 questions whose document fits, flat `Choice` puts the answer page first 29 times and in the top 3 35 times.
 
@@ -29,15 +29,15 @@ For the Xiaomi example, Jev picks the section "Editing An SMS" at 0.95 among 24 
 
 ```python
 from pageindex import PageIndexClient
-import locate
+import jev
 
 client = PageIndexClient()  # local mode: trees go to ./.pageindex, OPENAI_API_KEY builds them
 doc_id = client.submit_document("BESTBUY_2023_10K.pdf", wait=True)["doc_id"]
-found = locate.locate(client, doc_id, "What goodwill does Best Buy have for the fiscal year ending January 28, 2023?")
+found = jev.locate(client, doc_id, "What goodwill does Best Buy have for the fiscal year ending January 28, 2023?")
 print(found["pages"], found["jev_tokens"])      # pages to hand to your LLM
 ```
 
-`locate.py` holds the whole method.
+`jev.py` holds the whole method.
 
 ## Results
 
@@ -61,7 +61,7 @@ Every row's output is in `results/`.
 - Some benchmark page labels are off. In the NYU housing guide, three answers sit 2 pages after their label, which undercounts page hits for every method but not answer accuracy.
 - Local flash trees have defects on some annual reports, such as pages 1 to 99 of the Activision Blizzard 10-K as one undivided section.
 - The verification threshold was picked on the first few questions.
-- `locate.py` reads page ranges through a private SDK call, because the public `get_document_structure()` returns only start pages in local mode.
+- `jev.py` reads page ranges through a private SDK call, because the public `get_document_structure()` returns only start pages in local mode.
 
 ## Reproduce
 

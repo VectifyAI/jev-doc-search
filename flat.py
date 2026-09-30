@@ -9,7 +9,7 @@ import tiktoken
 from pageindex import PageIndexClient
 from typesafe_sdk import Choice
 
-import locate
+import jev
 
 HERE = Path(__file__).parent
 MAX_STATE_TOKENS = 30000  # Jev: state plus the longest question within 32k
@@ -28,7 +28,7 @@ def main():
         document = "\n".join(f"p{p}| {text[p]}" for p in sorted(text))
         if len(enc.encode(document)) > MAX_STATE_TOKENS:
             return None
-        r = locate.jev.system_one(state={"document": document}, questions={"where": Choice(
+        r = jev.typesafe.system_one(state={"document": document}, questions={"where": Choice(
             instructions=f'Which page of `document` contains the answer to: "{row["question"]}"?',
             criteria={f"p{p}": None for p in sorted(text)})})
         probs = r.answers["where"].probabilities

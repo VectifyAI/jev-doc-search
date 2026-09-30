@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pageindex import PageIndexClient
 
-import locate
+import jev
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "bench"))
@@ -56,7 +56,7 @@ def arm_b(client, doc_id, row, model, effort):
     import openai
 
     t = time.perf_counter()
-    found = locate.locate(client, doc_id, row["question"])
+    found = jev.locate(client, doc_id, row["question"])
     pages = "\n\n".join(f"--- Page {p} ---\n{found['text'][p]}" for p in found["pages"])
     r = openai.OpenAI().responses.create(model=model, reasoning={"effort": effort},
                                          input=ANSWER_PROMPT.format(question=row["question"], pages=pages))
@@ -94,7 +94,7 @@ def main():
             res = {"response": "", "error": f"{type(e).__name__}: {e}"}
         res["page_hit"] = bool(set(ast.literal_eval(row["evidence_pages"])) & set(res.get("pages", [])))
         print(f"{args.arm} {res.get('latency_s', 0):5.1f}s hit={res['page_hit']!s:<5} {row['question'][:60]}", flush=True)
-        return {**row, **res, "arm": args.arm, "nav": locate.NAV, "chat_model": args.model, "effort": args.effort}
+        return {**row, **res, "arm": args.arm, "nav": jev.NAV, "chat_model": args.model, "effort": args.effort}
 
     # B runs one question at a time so each latency is measured alone
     with ThreadPoolExecutor(4 if args.arm == "A" else 1) as ex:

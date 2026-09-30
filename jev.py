@@ -15,7 +15,7 @@ NAV_MIN = 0.2      # noul navigation only
 VERIFY_MIN = 0.5   # a candidate page is kept when its noul clears this
 MAX_VERIFY = 16    # candidate pages Jev reads
 
-jev = TypeSafeClient(model=MODEL, retry=RetryPolicy(max_retries=5, backoff_initial=1.0, backoff_max=20.0))
+typesafe = TypeSafeClient(model=MODEL, retry=RetryPolicy(max_retries=5, backoff_initial=1.0, backoff_max=20.0))
 
 
 def page_spans(tree):
@@ -60,7 +60,7 @@ def ask_choice(question, parent, children):
     options = _options(parent, children)
     if len(options) == 1:
         return {key: 1.0 for key in options}, 0
-    r = jev.system_one(state={"question": question}, questions={"part": Choice(
+    r = typesafe.system_one(state={"question": question}, questions={"part": Choice(
         instructions="Which part of the document most likely contains the answer to the question?",
         criteria=options)})
     return dict(r.answers["part"].probabilities), r.usage.input_tokens
@@ -107,7 +107,7 @@ def ask_nouls(question, parent, children):
         key: Noul(instructions=f"Would this part of the document contain the answer to the question? Part: {text}")
         for key, text in _options(parent, children).items()
     }
-    r = jev.system_one(state={"question": question}, questions=questions)
+    r = typesafe.system_one(state={"question": question}, questions=questions)
     return {key: a.noul for key, a in r.answers.items()}, r.usage.input_tokens
 
 
@@ -155,7 +155,7 @@ def verify(question, pages_text):
     """One request per page: does this page state the answer?"""
     def ask(item):
         page, text = item
-        r = jev.system_one(
+        r = typesafe.system_one(
             state={"question": question, "page": text[:60000]},
             questions={"answers": Noul(instructions="Does this page state information that answers the question?")},
         )
