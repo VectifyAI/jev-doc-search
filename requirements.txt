@@ -1,0 +1,3 @@
+pageindex>=0.2.20
+typesafe-sdk==0.7.2
+tiktoken

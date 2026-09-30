@@ -1,0 +1,6 @@
+.env
+bench/
+mmlb/
+store/
+doc_ids.json
+__pycache__/
