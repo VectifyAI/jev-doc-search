@@ -1,6 +1,6 @@
 """Answer the benchmark questions with one method, timed and priced.
 
-    python run.py A --out results/A.run1.json     # PageIndex agent
+    python run.py A --out results/A.json          # PageIndex agent
     python run.py B --out results/B.choice.json   # Jev locate + one LLM call
     JEV_NAV=noul python run.py B --out results/B.noul.json
 """

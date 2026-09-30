@@ -43,10 +43,10 @@ print(found["pages"], found["jev_tokens"])      # pages to hand to your LLM
 
 [PageIndex-OSS-Benchmark](https://github.com/VectifyAI/PageIndex-OSS-Benchmark): 62 questions over 34 PDFs (1,945 pages). Trees built locally with flash. Every method answers with `gpt-5.6-luna` at reasoning effort `none`, and [MMLongBench-Doc-V2](https://github.com/VectifyAI/MMLongBench-Doc-V2)'s judge scores the answers. Costs include Jev (`jev-1.13.0`, $0.042 per million input tokens).
 
-| Method | Correct (run 1 / run 2) | Median latency | Cost per question |
+| Method | Correct | Median latency | Cost per question |
 | --- | --- | --- | --- |
-| **A.** PageIndex agent (`client.chat`), no Jev | 57 / 56 (91%) | 6.4 / 6.0 s | $0.0038 / $0.0033 |
-| **B.** Jev locates, one LLM call answers | 51 (82%, one run) | 3.8 s | $0.0009 |
+| **A.** PageIndex agent (`client.chat`), no Jev | 57 (92%) | 6.4 s | $0.0038 |
+| **B.** Jev locates, one LLM call answers | 51 (82%) | 3.8 s | $0.0009 |
 
 - B is the pure "PageIndex + Jev" retrieval: no LLM touches retrieval, and it cannot search again after a miss.
 - Navigating with one `Noul` per section instead of a `Choice` was worse: B answers 43. TypeSafe's failure-mode notes explain why: a `Choice` is relative, while each `Noul` is absolute "and can be low for all of them".
@@ -56,7 +56,7 @@ Every row's output is in `results/`.
 
 ## Limitations
 
-- Two runs per method at most; the same setup moves by 2 to 3 questions between runs.
+- A shows the better of two runs (the other got 56) and B ran once; the same setup moves by 2 to 3 questions between runs.
 - The benchmark leans short: 39 of 62 questions have a document that fits in one request, and only 2 are on a document over 255 pages.
 - Some benchmark page labels are off. In the NYU housing guide, three answers sit 2 pages after their label, which undercounts page hits for every method but not answer accuracy.
 - Local flash trees have defects on some annual reports, such as pages 1 to 99 of the Activision Blizzard 10-K as one undivided section.
@@ -72,7 +72,7 @@ pip install -r requirements.txt
 cp .env.example .env              # OPENAI_API_KEY, TYPESAFE_API_KEY
 
 python index_docs.py              # 34 local trees, about $1.6 of gpt-5.6-luna
-python run.py A --out results/A.run1.json
+python run.py A --out results/A.json
 python run.py B --out results/B.choice.json
 JEV_NAV=noul python run.py B --out results/B.noul.json
 python flat.py                    # flat Choice baseline
