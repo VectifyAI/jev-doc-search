@@ -31,7 +31,7 @@ For the Xiaomi example, Jev picks the section "Editing An SMS" at 0.95 among 24 
 from pageindex import PageIndexClient
 import locate
 
-client = PageIndexClient(storage_path="store")  # local mode; OPENAI_API_KEY builds the tree
+client = PageIndexClient()  # local mode: trees go to ./.pageindex, OPENAI_API_KEY builds them
 doc_id = client.submit_document("BESTBUY_2023_10K.pdf", wait=True)["doc_id"]
 found = locate.locate(client, doc_id, "What goodwill does Best Buy have for the fiscal year ending January 28, 2023?")
 print(found["pages"], found["jev_tokens"])      # pages to hand to your LLM
@@ -47,11 +47,9 @@ print(found["pages"], found["jev_tokens"])      # pages to hand to your LLM
 | --- | --- | --- | --- |
 | **A.** PageIndex agent (`client.chat`), no Jev | 57 / 56 (91%) | 6.4 / 6.0 s | $0.0038 / $0.0033 |
 | **B.** Jev locates, one LLM call answers | 51 (82%, one run) | 3.8 s | $0.0009 |
-| **C.** PageIndex agent with a Jev `locate_pages` tool that returns the pages' text | 55 / 56 (90%) | 5.6 / 5.1 s | $0.0015 |
 
 - B is the pure "PageIndex + Jev" retrieval: no LLM touches retrieval, and it cannot search again after a miss.
-- C keeps the agent's tools. In over 80% of questions it answers straight from the pages Jev returns; otherwise it reads more pages itself. It matches A within run-to-run noise at under half the cost.
-- Navigating with one `Noul` per section instead of a `Choice` was worse: B 43, C 56 / 53. TypeSafe's failure-mode notes explain why: a `Choice` is relative, while each `Noul` is absolute "and can be low for all of them".
+- Navigating with one `Noul` per section instead of a `Choice` was worse: B answers 43. TypeSafe's failure-mode notes explain why: a `Choice` is relative, while each `Noul` is absolute "and can be low for all of them".
 - On the 39 questions whose document fits in one request, the answer page is in flat `Choice`'s top 3 for 35 and in the tree's candidates (about 6 pages) for 37.
 
 Every row's output is in `results/`.
@@ -76,7 +74,6 @@ cp .env.example .env              # OPENAI_API_KEY, TYPESAFE_API_KEY
 python index_docs.py              # 34 local trees, about $1.6 of gpt-5.6-luna
 python run.py A --out results/A.run1.json
 python run.py B --out results/B.choice.json
-python run.py C --out results/C.choice.run1.json
 JEV_NAV=noul python run.py B --out results/B.noul.json
 python flat.py                    # flat Choice baseline
 python summarize.py               # judge and tabulate

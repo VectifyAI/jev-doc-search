@@ -11,7 +11,7 @@ HERE = Path(__file__).parent
 
 
 def main():
-    client = PageIndexClient(storage_path=str(HERE / "store"))
+    client = PageIndexClient(storage_path=str(HERE / ".pageindex"))
     cache_path = HERE / "doc_ids.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
     for name in sorted({q["doc_id"] for q in json.load(open(HERE / "bench" / "questions.json"))}):

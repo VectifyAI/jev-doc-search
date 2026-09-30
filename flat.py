@@ -18,7 +18,7 @@ enc = tiktoken.get_encoding("o200k_base")
 
 
 def main():
-    client = PageIndexClient(storage_path=str(HERE / "store"))
+    client = PageIndexClient(storage_path=str(HERE / ".pageindex"))
     ids = json.loads((HERE / "doc_ids.json").read_text())
 
     def ask(row):
