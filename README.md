@@ -43,7 +43,7 @@ In the code:
 
 - **`state`** is what Jev reads before deciding. Here it is just the question.
 - **`Choice`** is the decision. Its options go in `criteria`: one key per page (`p1`, `p2`, …), each described by that page's text.
-- **The answer** names the most likely page in `choice`, with every page's probability in `probabilities`, summing to 1. The chosen page goes to your LLM.
+- **The answer** names the most likely page in `choice`, with every page's probability in `probabilities`, summing to 1.
 
 ## Two challenges of scaling to long documents
 
@@ -140,7 +140,7 @@ r = typesafe.system_one(
         criteria={f"p{p['page_index']}": p["markdown"] for p in pages},
     )},
 )
-print(r.answers["page"].choice)  # the page to hand to your LLM
+print(r.answers["page"].choice)  # the most likely page
 ```
 
 ## Going further: deeper trees, top-K search, and checking with `Noul`
@@ -166,7 +166,7 @@ for page in pageindex.get_page_content(doc_id, ",".join(map(str, candidates))):
         )},
     )
     if r.answers["answers"].noul >= 0.5:
-        kept.append(page["page_index"])  # pages to hand to your LLM
+        kept.append(page["page_index"])  # the pages that answer the question
 ```
 
 [jev.py](jev.py) puts all three together. A beam of 3 goes down a tree of any depth, with each section's opening pages, before its first subsection, as an option too. A `Choice` over the pages of each of the 3 sections it ends in then picks the candidates; a section too long for one request is split into windows that fit. Finally, one `Noul` checks each of up to 16 candidates: pages at 0.5 or above are kept, or the best 2 if none is. Run it on a PDF and a question:
