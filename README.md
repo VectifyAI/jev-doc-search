@@ -137,6 +137,7 @@ Continuing from the tree above, the search takes two steps.
 **First, pick a section.** One `Choice` over the top-level sections, each described by its title and summary.
 
 ```python
+from pageindex.utils import get_node
 from typesafe_sdk import Choice, TypeSafeClient
 
 typesafe = TypeSafeClient(model="jev-1.13.0")
@@ -151,16 +152,12 @@ r = typesafe.system_one(
         criteria=sections,
     )},
 )
-picked = r.answers["section"].choice  # the node_id of the most likely section, e.g. "0003"
-
-ids = [n["node_id"] for n in tree]
-i = ids.index(picked)
+section = get_node(tree, r.answers["section"].choice)  # choice is the picked node_id, e.g. "0003"
 ```
 
 **Then, pick a page inside it.** One `Choice` over the pages of that section, `start_index` to `end_index`, as in flat page search.
 
 ```python
-section = tree[i]
 pages = pageindex.get_page_content(doc_id, f"{section['start_index']}-{section['end_index']}")
 r = typesafe.system_one(
     state={"question": question},
