@@ -73,27 +73,30 @@ doc_id = pageindex.submit_document("NVIDIA_2026_10K.pdf", wait=True)["doc_id"]
 tree = pageindex.get_document_structure(doc_id)
 ```
 
-`tree` is a list of nodes, each with its `title`, its first page (`page_index`), a summary (`prefix_summary` on a node with children, `summary` on a leaf), sometimes the headings it merged (`key_items`), and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged; built with PageIndex Flash):
+`tree` is a list of nodes, each with its `title`, its page range (`start_index` to `end_index`), a `summary` of those pages, sometimes the headings it merged (`key_items`), and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged; built with PageIndex Flash):
 
 ```jsonc
 [
   {
     "title": "Preface",
     "node_id": "0000",
-    "page_index": 1,
-    "prefix_summary": "The Preface introduces NVIDIA’s fiscal 2026 Form 10-K…",
+    "start_index": 1,
+    "end_index": 48,
+    "summary": "The Preface introduces NVIDIA’s fiscal 2026 Form 10-K…",
     "nodes": [
       {
         "title": "NVIDIA Business, Technology Platform, and Innovation Overview",
         "node_id": "0003",
-        "page_index": 4,
+        "start_index": 4,
+        "end_index": 4,
         "key_items": ["Part I", "Item 1. Business"],
         "summary": "The page presents NVIDIA’s business and company overview…"
       },
       {
         "title": "Our Company",
         "node_id": "0004",
-        "page_index": 4,
+        "start_index": 4,
+        "end_index": 5,
         "summary": "This section of Part I, Item 1 describes…"
       }
       // … 69 more
@@ -103,13 +106,15 @@ tree = pageindex.get_document_structure(doc_id)
   {
     "title": "Definition and Limitations of Internal Control over Financial Reporting",
     "node_id": "0073",
-    "page_index": 49,
-    "prefix_summary": "The section contains PwC’s audit report and opinions…",
+    "start_index": 49,
+    "end_index": 57,
+    "summary": "The section contains PwC’s audit report and opinions…",
     "nodes": [
       {
         "title": "NVIDIA Corporation and Subsidiaries Consolidated Balance Sheets",
         "node_id": "0077",
-        "page_index": 53,
+        "start_index": 53,
+        "end_index": 54,
         "summary": "The text presents NVIDIA's consolidated balance sheets for…"
       }
       // … 8 more
@@ -137,7 +142,7 @@ from typesafe_sdk import Choice, TypeSafeClient
 typesafe = TypeSafeClient(model="jev-1.13.0")
 question = "What was NVIDIA's total revenue for fiscal year 2026?"
 
-sections = {n["node_id"]: f"{n['title']}. {n.get('summary') or n.get('prefix_summary', '')}" for n in tree}
+sections = {n["node_id"]: f"{n['title']}. {n.get('summary', '')}" for n in tree}
 
 r = typesafe.system_one(
     state={"question": question},
@@ -152,13 +157,11 @@ ids = [n["node_id"] for n in tree]
 i = ids.index(picked)
 ```
 
-**Then, pick a page inside it.** The section runs from its first page to where the next one starts; one `Choice` over those pages, as in flat page search.
+**Then, pick a page inside it.** One `Choice` over the pages of that section, `start_index` to `end_index`, as in flat page search.
 
 ```python
-start = tree[i]["page_index"]
-end = tree[i + 1]["page_index"] if i + 1 < len(tree) else pageindex.get_document(doc_id)["pageNum"]
-
-pages = pageindex.get_page_content(doc_id, f"{start}-{end}")
+section = tree[i]
+pages = pageindex.get_page_content(doc_id, f"{section['start_index']}-{section['end_index']}")
 r = typesafe.system_one(
     state={"question": question},
     questions={"page": Choice(

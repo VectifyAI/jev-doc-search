@@ -167,27 +167,10 @@ def verify(question, pages_text):
     return kept, {p: s for p, s, _ in scored}, sum(t for _, _, t in scored)
 
 
-def tree_with_ranges(client, doc_id):
-    """The public structure gives only start pages; a node ends where its next sibling starts."""
-    def walk(nodes, end):
-        out = []
-        for k, n in enumerate(nodes):
-            stop = nodes[k + 1]["page_index"] if k + 1 < len(nodes) else end
-            out.append({"node_id": n["node_id"], "title": n["title"],
-                        "summary": n.get("summary") or n.get("prefix_summary"),
-                        "start_index": n["page_index"], "end_index": max(n["page_index"], stop),
-                        "nodes": walk(n.get("nodes") or [], stop)})
-        return out
-
-    return walk(client.get_document_structure(doc_id), client.get_document(doc_id)["pageNum"])
-
-
 def locate(client, doc_id, question):
     """Navigate the tree, then verify the candidate pages. Returns the kept pages and the route."""
     t0 = time.perf_counter()
-    # local mode keeps exact page ranges behind a private call; the cloud has only the public structure
-    raw = getattr(client._api, "raw_tree", None)
-    tree = raw(doc_id) if raw else tree_with_ranges(client, doc_id)
+    tree = client.get_document_structure(doc_id)  # pageindex>=0.2.21: start_index, end_index, summary per node
     hits, trace, nav_tokens = (navigate_choice if NAV == "choice" else navigate_noul)(question, tree)
     t1 = time.perf_counter()
     pages = candidate_pages(hits)
