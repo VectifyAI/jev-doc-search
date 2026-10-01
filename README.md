@@ -6,16 +6,14 @@
 
 ## Page search with Jev's `Choice`
 
-Page search can be framed as a multiple-choice question. The question is "which page answers this?", and the options are the pages themselves: each page is one option, described by its own text. Jev reads every option and returns a probability for each page; the most likely page is the answer.
+Page search can be framed as a multiple-choice question. The question is "which page answers this?", and the options are the pages themselves: each page is one option, described by its own text. Jev reads every option and returns a probability for each page; the most likely page is the answer. We call this flat page search: one `Choice`, one option per page.
 
 <img src="assets/page-search.gif" width="900" alt="Each page is one option of a Choice; Jev returns a probability for every page">
 
-To try it on a PDF of your own, run [flat.py](flat.py):
+To try it on a short PDF of your own, such as an employee handbook, run [page_search.py](page_search.py) (see [Setup](#setup) for installing and API keys):
 
 ```bash
-pip install -r requirements.txt
-export TYPESAFE_API_KEY="..."
-python flat.py handbook.pdf "How many vacation days do new employees get?"
+python page_search.py handbook.pdf "How many vacation days do new employees get?"
 ```
 
 It prints the most likely page and its text. The core of it is a single call:
@@ -36,7 +34,7 @@ r = typesafe.system_one(
         criteria={f"p{i}": text for i, text in enumerate(pages, 1)},
     )},
 )
-print(r.answers["page"].choice)  # 'p7', the most likely page
+print(r.answers["page"].choice)  # the most likely page, e.g. 'p7'
 ```
 
 In the code:
@@ -45,7 +43,7 @@ In the code:
 - **`Choice`** is the decision. Its options go in `criteria`: one key per page (`p1`, `p2`, …), each described by that page's text.
 - **The answer** names the most likely page in `choice`, with every page's probability in `probabilities`, summing to 1.
 
-## Two challenges of scaling to long documents
+## Why flat page search breaks on long documents
 
 Flat page search hits two limits, one after the other:
 
@@ -54,24 +52,15 @@ Flat page search hits two limits, one after the other:
 
 [PageIndex](https://github.com/VectifyAI/PageIndex) solves both at once. It turns the flat choice over pages into a tree: the document splits into sections, each with a title and a short summary, and each section into its pages. Jev then makes one small choice per level instead of one huge one, so every `Choice` has only a handful of options and fewer tokens.
 
-## Scaling Jev to long documents with PageIndex
+## Tree search with PageIndex
 
-It takes two steps: PageIndex builds the tree, and Jev searches it instead of the pages.
-
-### 1. Generate a tree representation of the document with PageIndex
+### 1. Build the tree with PageIndex
 
 PageIndex builds the tree from the document's own structure. The root is the whole document, its children are sections, and each section has a title, a summary, and a page range, down to the pages.
 
 <img src="assets/tree-index.gif" width="990" alt="PageIndex turns a 300-page document into a three-level tree: the document, its sections, their pages">
 
-Install the PageIndex SDK and set your API key:
-
-```bash
-pip install "pageindex>=0.2.21"
-export PAGEINDEX_API_KEY="..."
-```
-
-Then submit the PDF and read its tree:
+Submit the PDF and read its tree:
 
 ```python
 import os
@@ -84,38 +73,37 @@ doc_id = pageindex.submit_document("NVIDIA_2026_10K.pdf", wait=True)["doc_id"]
 tree = pageindex.get_document_structure(doc_id)
 ```
 
-`tree` is a list of nodes, each with its `title`, its page range (`start_index` to `end_index`), a `summary` of those pages, and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged; built with PageIndex Flash):
+`tree` is a list of nodes, each with its `title`, its page range (`start_index` to `end_index`), a `summary` of those pages, and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged):
 
 ```jsonc
 [
+  // … 4 more
   {
-    "title": "Preface",
-    "node_id": "0000",
-    "start_index": 1,
-    "end_index": 48,
-    "summary": "The Preface introduces NVIDIA’s fiscal 2026 Form 10-K…",
+    "title": "Item 1. Business",
+    "node_id": "0004",
+    "start_index": 4,
+    "end_index": 12,
+    "summary": "This section covers NVIDIA's overall business overview…",
     "nodes": [
       {
         "title": "Our Company",
-        "node_id": "0004",
+        "node_id": "0005",
         "start_index": 4,
         "end_index": 5,
-        "summary": "This section of Part I, Item 1 describes…"
+        "summary": "This text provides an overview of NVIDIA as a pioneer in accelerated computing…"
       }
-      // … 70 more
+      // … 16 more
     ]
   }
-  // … 17 more
+  // … 25 more
 ]
 ```
 
-### 2. Tree search with Jev's `Choice`
+### 2. Search the tree with Jev
 
 Jev starts at the root and asks one `Choice` per level: which of these children most likely contains the answer? Each option reads `"title. summary"`. The chosen section's children become the next menu, until the search reaches pages.
 
 <img src="assets/tree-search.gif" width="990" alt="Jev searches the tree with one Choice per level: a section, then a page">
-
-Each `Choice` sees a handful of titles and summaries instead of the whole document, so neither limit applies: the 318-page Citigroup 10-K becomes a few short menus, one per level.
 
 Continuing from the tree above, the search takes two steps.
 
@@ -137,7 +125,7 @@ r = typesafe.system_one(
         criteria=sections,
     )},
 )
-section = get_node(tree, r.answers["section"].choice)  # choice is the picked node_id, e.g. "0003"
+section = get_node(tree, r.answers["section"].choice)  # choice is the picked node_id, e.g. "0004"
 ```
 
 **Then, pick a page inside it.** One `Choice` over the pages of that section, `start_index` to `end_index`, as in flat page search.
@@ -162,31 +150,43 @@ The two-step search above is the simplest version. Three changes make it general
 
 **Top-K search.** Taking only the most likely option at each step is brittle: if the right section or page ranks second, it is lost. Instead, keep the top K: the K most likely keys of `probabilities`, not just `choice`. In the tree this is beam search: keep the K best paths at each level, scored by the geometric mean of their step probabilities, as in TypeSafe's [hierarchical classification](https://docs.typesafe.ai/cookbooks/hierarchical_classification) cookbook.
 
-**Checking with `Noul`.** A `Choice` is relative: its probabilities sum to 1, so it always names a winner, even when no option answers the question. A `Noul` is a yes/no question with its own probability, so each candidate page can be judged on its own, with its full text in `state`, and kept or dropped by a threshold:
+**Checking with `Noul`.** A `Choice` is relative: its probabilities sum to 1, so it always names a winner, even when no option answers the question. A `Noul` is a yes/no question with its own probability, so each candidate page can be judged on its own, with its full text in `state`, and kept or dropped by a threshold.
 
-```python
-from typesafe_sdk import Noul
+[tree_search.py](tree_search.py) puts all three together:
 
-candidates = [32, 33, 41]  # page numbers from the top K, e.g. the pages of the beam's sections
-kept = []
-for page in pageindex.get_page_content(doc_id, ",".join(map(str, candidates))):
-    r = typesafe.system_one(
-        state={"question": question, "page": page["markdown"]},
-        questions={"answers": Noul(
-            instructions="Does this page state information that answers the question?",
-        )},
-    )
-    if r.answers["answers"].noul >= 0.5:
-        kept.append(page["page_index"])  # the pages that answer the question
+1. **Sections.** A beam of 3 goes down a tree of any depth. At each section, its opening pages, before its first subsection, are an option too.
+2. **Pages.** One `Choice` over the pages of each of the 3 sections the beam ends in picks the candidates. A section too long for one request is split into windows that fit.
+3. **Check.** One `Noul` per candidate, up to 16. Pages at 0.5 or above are kept, or the best 2 if none is.
+
+Run it on a PDF and a question:
+
+```bash
+python tree_search.py NVIDIA_2026_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
 ```
 
-[jev.py](jev.py) puts all three together. A beam of 3 goes down a tree of any depth, with each section's opening pages, before its first subsection, as an option too. A `Choice` over the pages of each of the 3 sections it ends in then picks the candidates; a section too long for one request is split into windows that fit. Finally, one `Noul` checks each of up to 16 candidates: pages at 0.5 or above are kept, or the best 2 if none is. Run it on a PDF and a question:
+It uploads the PDF, prints its `doc_id`, then the sections the search ended in and the pages it kept. To ask another question about the same document, pass the `doc_id` instead of the PDF, so it is not uploaded again:
+
+```bash
+python tree_search.py pi-... "What was NVIDIA's gross margin for fiscal year 2026?"
+```
+
+On the two annual reports, uploaded to the cloud PageIndex:
+
+| Question | Pages | Answer found on | Answer |
+| --- | --- | --- | --- |
+| What was NVIDIA's total revenue for fiscal year 2026? | 93 | p37, p51 | $215,938 million ✓ |
+| What was Citigroup's net income for 2025? | 318 | p12, p16, p134, p135 | $14,306 million ✓ |
+
+Both answers are right: they are the figures in each report's consolidated statement of income (NVIDIA p51, Citigroup p134).
+
+For NVIDIA, the search ended in the Fiscal Year 2026 Summary (p37–38) and kept p37 (`Noul` 0.99), p51 (0.98), and p40 (0.97). For Citigroup, it ended in the Consolidated Statement of Income (p134–135) and kept p12, p16, p134 (0.99), p17, p135 (0.98), and p15 (0.86). The pages kept that do not state the answer are related to it: NVIDIA's p40 gives the income statement as a share of revenue, Citigroup's p15 explains the change in equity, citing $14.3 billion in net income, and its p17 gives the net income of one segment, Services ($7,075 million).
+
+## Setup
 
 ```bash
 pip install -r requirements.txt
 export TYPESAFE_API_KEY="..."
 export PAGEINDEX_API_KEY="..."
-python jev.py NVIDIA_2026_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
 ```
 
-It prints the sections the search ended in, then the pages it kept and their text.
+You can get a TypeSafe key from the [TypeSafe console](https://console.typesafe.ai) and a PageIndex key from the [PageIndex dashboard](https://dash.pageindex.ai/).

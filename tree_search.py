@@ -1,6 +1,7 @@
 """Find the pages that answer a question by searching a PageIndex tree with Jev.
 
-    python jev.py report.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
+    python tree_search.py report.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
+    python tree_search.py pi-... "What was NVIDIA's gross margin?"   # the doc_id the first run printed
 
 The search runs top to bottom, in three stages:
 
@@ -168,9 +169,13 @@ if __name__ == "__main__":
 
     from pageindex import PageIndexClient
 
-    pdf, question = sys.argv[1], sys.argv[2]
+    source, question = sys.argv[1], sys.argv[2]
     client = PageIndexClient(api_key=os.environ["PAGEINDEX_API_KEY"])
-    doc_id = client.submit_document(pdf, wait=True)["doc_id"]
+    if os.path.isfile(source):  # a PDF: upload it once, then reuse its doc_id
+        doc_id = client.submit_document(source, wait=True)["doc_id"]
+        print(f"doc_id: {doc_id}  (pass it instead of the PDF next time)\n")
+    else:  # a doc_id from an earlier upload
+        doc_id = source
     found = locate(client, doc_id, question)
     for s in found["sections"]:
         print(f"{s['score']:.2f}  p{s['start']}-{s['end']}  {' > '.join(s['path'])}")

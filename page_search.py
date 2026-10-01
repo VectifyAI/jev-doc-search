@@ -1,44 +1,45 @@
 """Page search without PageIndex: one Choice whose options are the document's pages.
 
-    python flat.py handbook.pdf "How many vacation days do new employees get?"
+    python page_search.py handbook.pdf "How many vacation days do new employees get?"
 
 With no arguments it runs the benchmark baseline instead (the whole document in `state`, one Choice
 over its page ids). Both run only on documents that fit in one request."""
 import ast
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import tiktoken
+from dotenv import load_dotenv
 from pageindex import PageIndexClient
-from typesafe_sdk import Choice
+from typesafe_sdk import Choice, RetryPolicy, TypeSafeClient
 
-import jev
+load_dotenv()
 
 HERE = Path(__file__).parent
 MAX_STATE_TOKENS = 30000  # Jev: state plus the longest question within 32k
+MAX_OPTIONS = 255         # Jev: options per Choice
 
+typesafe = TypeSafeClient(model="jev-1.13.0", retry=RetryPolicy(max_retries=5, backoff_initial=1.0, backoff_max=20.0))
 enc = tiktoken.get_encoding("o200k_base")
-
-
-MAX_OPTIONS = 255  # Jev: options per Choice
 
 
 def page_search(pages, question):
     """One Choice over the pages, each option described by its text; returns the most likely page number."""
     if len(pages) > MAX_OPTIONS:
-        raise ValueError(f"{len(pages)} pages, but a Choice takes at most {MAX_OPTIONS} options; use jev.py")
+        raise ValueError(f"{len(pages)} pages, but a Choice takes at most {MAX_OPTIONS} options; use tree_search.py")
     tokens = len(enc.encode(question)) + sum(len(enc.encode(text)) for text in pages)
     if tokens > MAX_STATE_TOKENS:
-        raise ValueError(f"about {tokens} tokens, but one request fits {MAX_STATE_TOKENS}; use jev.py")
-    r = jev.typesafe.system_one(state={"question": question}, questions={"page": Choice(
+        raise ValueError(f"about {tokens} tokens, but one request fits {MAX_STATE_TOKENS}; use tree_search.py")
+    r = typesafe.system_one(state={"question": question}, questions={"page": Choice(
         instructions="Which page contains the answer to the question?",
         criteria={f"p{i}": text for i, text in enumerate(pages, 1)})})
     return int(r.answers["page"].choice[1:])
 
 
 def main():
-    client = PageIndexClient(storage_path=str(HERE / ".pageindex"))
+    client = PageIndexClient(api_key=os.environ["PAGEINDEX_API_KEY"])
     ids = json.loads((HERE / "doc_ids.json").read_text())
 
     def ask(row):
@@ -48,7 +49,7 @@ def main():
         document = "\n".join(f"p{p}| {text[p]}" for p in sorted(text))
         if len(enc.encode(document)) > MAX_STATE_TOKENS:
             return None
-        r = jev.typesafe.system_one(state={"document": document}, questions={"where": Choice(
+        r = typesafe.system_one(state={"document": document}, questions={"where": Choice(
             instructions=f'Which page of `document` contains the answer to: "{row["question"]}"?',
             criteria={f"p{p}": None for p in sorted(text)})})
         probs = r.answers["where"].probabilities
