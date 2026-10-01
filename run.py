@@ -2,7 +2,6 @@
 
     python run.py A --out results/A.json          # PageIndex agent
     python run.py B --out results/B.choice.json   # Jev locate + one LLM call
-    JEV_NAV=noul python run.py B --out results/B.noul.json
 """
 import argparse
 import ast
@@ -94,7 +93,7 @@ def main():
             res = {"response": "", "error": f"{type(e).__name__}: {e}"}
         res["page_hit"] = bool(set(ast.literal_eval(row["evidence_pages"])) & set(res.get("pages", [])))
         print(f"{args.arm} {res.get('latency_s', 0):5.1f}s hit={res['page_hit']!s:<5} {row['question'][:60]}", flush=True)
-        return {**row, **res, "arm": args.arm, "nav": jev.NAV, "chat_model": args.model, "effort": args.effort}
+        return {**row, **res, "arm": args.arm, "chat_model": args.model, "effort": args.effort}
 
     # B runs one question at a time so each latency is measured alone
     with ThreadPoolExecutor(4 if args.arm == "A" else 1) as ex:

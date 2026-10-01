@@ -169,7 +169,7 @@ for page in pageindex.get_page_content(doc_id, ",".join(map(str, candidates))):
         kept.append(page["page_index"])  # pages to hand to your LLM
 ```
 
-`jev.py` puts all three together: a beam of 3 down a tree of any depth (with each section's opening text, before its first subsection, as an option too), up to 16 candidate pages taken from the 3 winning sections in turn so that one long section cannot fill the list, and one `Noul` per candidate. Pages at 0.5 or above are kept; if none is, the top 2. Run it on a PDF and a question:
+[jev.py](jev.py) puts all three together. A beam of 3 goes down a tree of any depth, with each section's opening pages, before its first subsection, as an option too. A `Choice` over the pages of each of the 3 sections it ends in then picks the candidates; a section too long for one request is split into windows that fit. Finally, one `Noul` checks each of up to 16 candidates: pages at 0.5 or above are kept, or the best 2 if none is. Run it on a PDF and a question:
 
 ```bash
 pip install -r requirements.txt
@@ -178,4 +178,4 @@ export PAGEINDEX_API_KEY="..."
 python jev.py NVIDIA_2026_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
 ```
 
-It prints the pages it kept and their text.
+It prints the sections the search ended in, then the pages it kept and their text.
