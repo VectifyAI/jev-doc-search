@@ -73,7 +73,7 @@ doc_id = pageindex.submit_document("NVIDIA_2026_10K.pdf", wait=True)["doc_id"]
 tree = pageindex.get_document_structure(doc_id)
 ```
 
-`tree` is a list of nodes, each with its `title`, its page range (`start_index` to `end_index`), a `summary` of those pages, sometimes the headings it merged (`key_items`), and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged; built with PageIndex Flash):
+`tree` is a list of nodes, each with its `title`, its page range (`start_index` to `end_index`), a `summary` of those pages, and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged; built with PageIndex Flash):
 
 ```jsonc
 [
@@ -85,42 +85,16 @@ tree = pageindex.get_document_structure(doc_id)
     "summary": "The Preface introduces NVIDIA’s fiscal 2026 Form 10-K…",
     "nodes": [
       {
-        "title": "NVIDIA Business, Technology Platform, and Innovation Overview",
-        "node_id": "0003",
-        "start_index": 4,
-        "end_index": 4,
-        "key_items": ["Part I", "Item 1. Business"],
-        "summary": "The page presents NVIDIA’s business and company overview…"
-      },
-      {
         "title": "Our Company",
         "node_id": "0004",
         "start_index": 4,
         "end_index": 5,
         "summary": "This section of Part I, Item 1 describes…"
       }
-      // … 69 more
-    ]
-  },
-  // … 1 more
-  {
-    "title": "Definition and Limitations of Internal Control over Financial Reporting",
-    "node_id": "0073",
-    "start_index": 49,
-    "end_index": 57,
-    "summary": "The section contains PwC’s audit report and opinions…",
-    "nodes": [
-      {
-        "title": "NVIDIA Corporation and Subsidiaries Consolidated Balance Sheets",
-        "node_id": "0077",
-        "start_index": 53,
-        "end_index": 54,
-        "summary": "The text presents NVIDIA's consolidated balance sheets for…"
-      }
-      // … 8 more
+      // … 70 more
     ]
   }
-  // … 15 more
+  // … 17 more
 ]
 ```
 
