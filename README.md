@@ -64,10 +64,21 @@ PageIndex builds the tree from the document's own structure. The root is the who
 
 <img src="assets/tree-index.gif" width="990" alt="PageIndex turns a 300-page document into a three-level tree: the document, its sections, their pages">
 
+Install the PageIndex SDK and set your API key:
+
+```bash
+pip install "pageindex>=0.2.21"
+export PAGEINDEX_API_KEY="..."
+```
+
+Then submit the PDF and read its tree:
+
 ```python
+import os
+
 from pageindex import PageIndexClient
 
-pageindex = PageIndexClient(api_key="YOUR_PAGEINDEX_API_KEY")
+pageindex = PageIndexClient(api_key=os.environ["PAGEINDEX_API_KEY"])
 
 doc_id = pageindex.submit_document("NVIDIA_2026_10K.pdf", wait=True)["doc_id"]
 tree = pageindex.get_document_structure(doc_id)
