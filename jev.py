@@ -167,11 +167,27 @@ def verify(question, pages_text):
     return kept, {p: s for p, s, _ in scored}, sum(t for _, _, t in scored)
 
 
+def tree_with_ranges(client, doc_id):
+    """The public structure gives only start pages; a node ends where its next sibling starts."""
+    def walk(nodes, end):
+        out = []
+        for k, n in enumerate(nodes):
+            stop = nodes[k + 1]["page_index"] if k + 1 < len(nodes) else end
+            out.append({"node_id": n["node_id"], "title": n["title"],
+                        "summary": n.get("summary") or n.get("prefix_summary"),
+                        "start_index": n["page_index"], "end_index": max(n["page_index"], stop),
+                        "nodes": walk(n.get("nodes") or [], stop)})
+        return out
+
+    return walk(client.get_document_structure(doc_id), client.get_document(doc_id)["pageNum"])
+
+
 def locate(client, doc_id, question):
     """Navigate the tree, then verify the candidate pages. Returns the kept pages and the route."""
     t0 = time.perf_counter()
-    # ponytail: private API; local get_document_structure() drops end pages, switch once it returns page ranges
-    tree = client._api.raw_tree(doc_id)
+    # local mode keeps exact page ranges behind a private call; the cloud has only the public structure
+    raw = getattr(client._api, "raw_tree", None)
+    tree = raw(doc_id) if raw else tree_with_ranges(client, doc_id)
     hits, trace, nav_tokens = (navigate_choice if NAV == "choice" else navigate_noul)(question, tree)
     t1 = time.perf_counter()
     pages = candidate_pages(hits)
@@ -181,3 +197,17 @@ def locate(client, doc_id, question):
     return {"pages": sorted(kept), "candidates": pages, "page_scores": page_scores, "hits": hits,
             "trace": trace, "text": text, "jev_tokens": nav_tokens + verify_tokens,
             "nav_s": t1 - t0, "verify_s": time.perf_counter() - t1}
+
+
+if __name__ == "__main__":
+    import sys
+
+    from pageindex import PageIndexClient
+
+    pdf, question = sys.argv[1], sys.argv[2]
+    client = PageIndexClient(api_key=os.environ["PAGEINDEX_API_KEY"])
+    doc_id = client.submit_document(pdf, wait=True)["doc_id"]
+    found = locate(client, doc_id, question)
+    print("pages:", found["pages"])
+    for page in found["pages"]:
+        print(f"\n--- p{page} ---\n{found['text'][page][:1500]}")

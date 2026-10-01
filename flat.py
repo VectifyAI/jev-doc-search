@@ -1,5 +1,9 @@
-"""Baseline without PageIndex, as in TypeSafe's line-by-line search: the whole document in `state`,
-one Choice over its page ids. Runs only on documents that fit in one request."""
+"""Page search without PageIndex: one Choice whose options are the document's pages.
+
+    python flat.py handbook.pdf "How many vacation days do new employees get?"
+
+With no arguments it runs the benchmark baseline instead (the whole document in `state`, one Choice
+over its page ids). Both run only on documents that fit in one request."""
 import ast
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +19,22 @@ HERE = Path(__file__).parent
 MAX_STATE_TOKENS = 30000  # Jev: state plus the longest question within 32k
 
 enc = tiktoken.get_encoding("o200k_base")
+
+
+MAX_OPTIONS = 255  # Jev: options per Choice
+
+
+def page_search(pages, question):
+    """One Choice over the pages, each option described by its text; returns the most likely page number."""
+    if len(pages) > MAX_OPTIONS:
+        raise ValueError(f"{len(pages)} pages, but a Choice takes at most {MAX_OPTIONS} options; use jev.py")
+    tokens = len(enc.encode(question)) + sum(len(enc.encode(text)) for text in pages)
+    if tokens > MAX_STATE_TOKENS:
+        raise ValueError(f"about {tokens} tokens, but one request fits {MAX_STATE_TOKENS}; use jev.py")
+    r = jev.typesafe.system_one(state={"question": question}, questions={"page": Choice(
+        instructions="Which page contains the answer to the question?",
+        criteria={f"p{i}": text for i, text in enumerate(pages, 1)})})
+    return int(r.answers["page"].choice[1:])
 
 
 def main():
@@ -48,4 +68,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if len(sys.argv) == 3:
+        from pypdf import PdfReader
+
+        pdf, question = sys.argv[1], sys.argv[2]
+        pages = [page.extract_text() or "" for page in PdfReader(pdf).pages]
+        best = page_search(pages, question)
+        print(f"p{best}\n\n{pages[best - 1][:1500]}")
+    else:
+        main()

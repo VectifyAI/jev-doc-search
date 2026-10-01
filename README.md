@@ -1,84 +1,207 @@
-# jev-pageindex
+# Long-document search with Jev and PageIndex
 
-[PageIndex](https://github.com/VectifyAI/PageIndex) as the index structure for [Jev](https://docs.typesafe.ai): long-document retrieval as a chain of small classifications.
+**Find the page that answers a question in a 300-page report with two Jev `Choice` calls. No embeddings needed!**
 
-Jev walks down a PageIndex tree with `Choice` questions, then checks each candidate page with a `Noul`. On [PageIndex-OSS-Benchmark](https://github.com/VectifyAI/PageIndex-OSS-Benchmark), one LLM call answering from the pages Jev keeps gets 51 of 62 questions right (82%), at $0.0009 per question and a median 3.8 s. The PageIndex agent gets 57 (92%) at $0.0038 and 6.4 s.
+[Jev](https://docs.typesafe.ai) answers multiple-choice questions: give it the options, and it returns a probability for each. "Which page answers this question?" is one of them, and it works well, until the document outgrows what Jev can read at once. [PageIndex](https://github.com/VectifyAI/PageIndex) removes that limit by turning the document into a hierarchical tree representation. Jev picks a node, then one of its children, and so on down the tree, choosing among a handful of options each time, however long the document.
 
-## Why Jev needs an index
+## Page search with Jev's `Choice`
 
-Jev can treat retrieval as classification: put the document in `state`, ask one `Choice` over its page ids ("which page answers this question?"), and read the ranking. TypeSafe's [line-by-line search](https://docs.typesafe.ai/cookbooks/semantic_find) cookbook does exactly this over lines. On a long document, it breaks down:
+Page search can be framed as a multiple-choice question. The question is "which page answers this?", and the options are the pages themselves: each page is one option, described by its own text. Jev reads every option and returns a probability for each page; the most likely page is the answer.
 
-| Case | Example from the benchmark | Why one flat `Choice` fails |
-| --- | --- | --- |
-| Over 255 pages | MMDetection 2.18.0 docs: 468 pages, ≈249k tokens | A `Choice` takes at most 255 options, and the text is about 8 times what fits in one request |
-| Under 255 pages, but too long for one request | Best Buy FY2023 10-K: 75 pages, ≈66k tokens | `state` plus the longest question must fit in 32k tokens, about 40 pages |
-| Fits, but the answer page is not ranked first | Xiaomi Mi phone user guide: 37 pages, ≈7k tokens | Pages 19 to 23 all discuss SMS, so the probability spreads across them |
+<img src="assets/page-search.gif" width="900" alt="Each page is one option of a Choice; Jev returns a probability for every page">
 
-In the Xiaomi case, the question is "How many steps are needed for editing an SMS?" and the answer is on page 22. Over two runs, flat `Choice` ranked a wrong page first (page 23 at 0.29, then page 19 at 0.32) and page 22 fifth, then third.
+To try it on a PDF of your own, run [flat.py](flat.py):
 
-In the benchmark, 23 of 34 documents fit in one request (the largest is 44 pages); none of the six annual reports (72 to 198 pages) do. The third case is uncommon: on the 39 questions whose document fits, flat `Choice` ranks the answer page first for 29 and in its top 3 for 35.
+```bash
+pip install -r requirements.txt
+export TYPESAFE_API_KEY="..."
+python flat.py handbook.pdf "How many vacation days do new employees get?"
+```
 
-TypeSafe's own docs point the same way. Past 255 lines, line-by-line search runs "in two passes: one Choice question picks a window of lines, and a second ranks the lines inside it". And the [Jev 1.13 failure modes](https://docs.typesafe.ai/model-jaggedness/jev-1.13) warn: "Accuracy falls as the state grows with content unrelated to the decision… retrieve and filter in code first."
+It prints the most likely page and its text. The core of it is a single call:
 
-To pick a window of a document that does not fit in `state`, Jev needs a short description of each window. That is an index. PageIndex builds one from the document's own structure: a tree of sections, each with a title, a summary, and a page range.
+```python
+from pypdf import PdfReader
+from typesafe_sdk import Choice, TypeSafeClient
 
-## How it works
+typesafe = TypeSafeClient(model="jev-1.13.0")
 
-1. **Index.** PageIndex turns the PDF into a section tree, locally.
-2. **Navigate.** Jev descends the tree with one `Choice` per section it opens: which part of the document most likely contains the answer? Each option reads `"title. summary"`, and the section's opening text, before its first subsection, is an option too. Beam search keeps the 3 best paths, scored by the geometric mean of their step probabilities, as in TypeSafe's [hierarchical classification](https://docs.typesafe.ai/cookbooks/hierarchical_classification) cookbook.
-3. **Candidates.** The pages of the 3 winning sections, taken from each in turn so that one long section cannot fill the list, up to 16.
-4. **Verify.** One `Noul` per candidate page, with the page's full text: "Does this page state information that answers the question?" Pages at 0.5 or above are kept; if none is, the top 2.
+pages = [page.extract_text() for page in PdfReader("handbook.pdf").pages]
+question = "How many vacation days do new employees get?"
 
-On the Xiaomi question, Jev picks "Editing An SMS" at 0.95 out of 24 top-level sections. That lands on page 22 in one step, for about 6k Jev tokens.
+r = typesafe.system_one(
+    state={"question": question},
+    questions={"page": Choice(
+        instructions="Which page contains the answer to the question?",
+        criteria={f"p{i}": text for i, text in enumerate(pages, 1)},
+    )},
+)
+print(r.answers["page"].choice)  # 'p7', the most likely page
+```
+
+In the code:
+
+- **`state`** is what Jev reads before deciding. Here it is just the question.
+- **`Choice`** is the decision. Its options go in `criteria`: one key per page (`p1`, `p2`, …), each described by that page's text.
+- **The answer** names the most likely page in `choice`, with every page's probability in `probabilities`, summing to 1. The chosen page goes to your LLM.
+
+## Two challenges of scaling to long documents
+
+Flat page search hits two limits, one after the other:
+
+1. **Too many tokens.** Every page's text goes into the request as an option, and the whole request must fit in 32k tokens. That runs out after a few dozen pages. NVIDIA's [10-K for fiscal 2026](https://d18rn0p25nwr6d.cloudfront.net/CIK-0001045810/e361e58a-7483-44f5-bc62-a9080ae6ec72.pdf) has only 93 pages, but its text is about 76k tokens, more than twice what fits.
+2. **Too many options.** A `Choice` takes at most 255 options, so one option per page stops at 255 pages. Some annual reports are longer than that: Citigroup's [10-K for 2025](https://www.citigroup.com/rcs/citigpa/storage/public/citi-2025-10-k-2-20-26.pdf) has 318 pages.
+
+[PageIndex](https://github.com/VectifyAI/PageIndex) solves both at once. It turns the flat choice over pages into a tree: the document splits into sections, each with a title and a short summary, and each section into its pages. Jev then makes one small choice per level instead of one huge one, so every `Choice` has only a handful of options and fewer tokens.
+
+## Scaling Jev to long documents with PageIndex
+
+It takes two steps: PageIndex builds the tree, and Jev searches it instead of the pages.
+
+### 1. Generate a tree representation of the document with PageIndex
+
+PageIndex builds the tree from the document's own structure. The root is the whole document, its children are sections, and each section has a title, a summary, and a page range, down to the pages.
+
+<img src="assets/tree-index.gif" width="990" alt="PageIndex turns a 300-page document into a three-level tree: the document, its sections, their pages">
 
 ```python
 from pageindex import PageIndexClient
-import jev
 
-client = PageIndexClient()  # local mode: trees are saved in ./.pageindex and built with OPENAI_API_KEY
-doc_id = client.submit_document("BESTBUY_2023_10K.pdf", wait=True)["doc_id"]
-found = jev.locate(client, doc_id, "What goodwill does Best Buy have for the fiscal year ending January 28, 2023?")
-print(found["pages"], found["jev_tokens"])  # the pages to hand to your LLM, and Jev's input tokens
+pageindex = PageIndexClient(api_key="YOUR_PAGEINDEX_API_KEY")
+
+doc_id = pageindex.submit_document("NVIDIA_2026_10K.pdf", wait=True)["doc_id"]
+tree = pageindex.get_document_structure(doc_id)
 ```
 
-`jev.py` holds the whole method.
+`tree` is a list of nodes, each with its `title`, its first page (`page_index`), a summary (`prefix_summary` on a node with children, `summary` on a leaf), sometimes the headings it merged (`key_items`), and its children in `nodes`. For the NVIDIA 10-K it looks like this (abridged; built with PageIndex Flash):
 
-## Results
+```jsonc
+[
+  {
+    "title": "Preface",
+    "node_id": "0000",
+    "page_index": 1,
+    "prefix_summary": "The Preface introduces NVIDIA’s fiscal 2026 Form 10-K…",
+    "nodes": [
+      {
+        "title": "NVIDIA Business, Technology Platform, and Innovation Overview",
+        "node_id": "0003",
+        "page_index": 4,
+        "key_items": ["Part I", "Item 1. Business"],
+        "summary": "The page presents NVIDIA’s business and company overview…"
+      },
+      {
+        "title": "Our Company",
+        "node_id": "0004",
+        "page_index": 4,
+        "summary": "This section of Part I, Item 1 describes…"
+      }
+      // … 69 more
+    ]
+  },
+  // … 1 more
+  {
+    "title": "Definition and Limitations of Internal Control over Financial Reporting",
+    "node_id": "0073",
+    "page_index": 49,
+    "prefix_summary": "The section contains PwC’s audit report and opinions…",
+    "nodes": [
+      {
+        "title": "NVIDIA Corporation and Subsidiaries Consolidated Balance Sheets",
+        "node_id": "0077",
+        "page_index": 53,
+        "summary": "The text presents NVIDIA's consolidated balance sheets for…"
+      }
+      // … 8 more
+    ]
+  }
+  // … 15 more
+]
+```
 
-[PageIndex-OSS-Benchmark](https://github.com/VectifyAI/PageIndex-OSS-Benchmark): 62 lookup questions over 34 PDFs (1,945 pages). Trees are built locally with [PageIndex Flash](https://pageindex.ai/blog/pageindex-flash). Every method answers with `gpt-5.6-luna` at reasoning effort `none`, and [MMLongBench-Doc-V2](https://github.com/VectifyAI/MMLongBench-Doc-V2)'s judge scores the answers. Costs include Jev (`jev-1.13.0`, $0.042 per million input tokens).
+### 2. Tree search with Jev's `Choice`
 
-| Method | Correct | Median latency | Cost per question |
-| --- | --- | --- | --- |
-| **A.** PageIndex agent (`client.chat`), no Jev | 57 (92%) | 6.4 s | $0.0038 |
-| **B.** Jev locates, one LLM call answers | 51 (82%) | 3.8 s | $0.0009 |
+Jev starts at the root and asks one `Choice` per level: which of these children most likely contains the answer? Each option reads `"title. summary"`. The chosen section's children become the next menu, until the search reaches pages.
 
-- B is pure PageIndex + Jev retrieval: no LLM helps find the pages, and nothing searches again after a miss.
-- Navigating with one `Noul` per section instead of a `Choice` over them was worse: B then answers 43. TypeSafe's failure-mode notes explain why: a `Choice` is relative, while each `Noul` is absolute "and can be low for all of them".
-- Where the document fits in one request, the tree finds the answer page as often as flat `Choice`: on those 39 questions, the page is among the tree's candidates (median 6 pages) for 37, and in flat `Choice`'s top 5 for 37.
+<img src="assets/tree-search.gif" width="990" alt="Jev searches the tree with one Choice per level: a section, then a page">
 
-Per-question outputs are in `results/`.
+Each `Choice` sees a handful of titles and summaries instead of the whole document, so neither limit applies: the 318-page Citigroup 10-K becomes a few short menus, one per level.
 
-## Limitations
+Continuing from the tree above, the search takes two steps.
 
-- Each number comes from one run; the same setup moves by 2 to 3 questions between runs.
-- The benchmark leans short: 39 of 62 questions have a document that fits in one request, and only 2 are on a document over 255 pages.
-- Some benchmark page labels are off. In the NYU housing guide, three answers sit 2 pages after their labeled page. This undercounts page hits for every method, but not answer accuracy.
-- Flash trees have defects on some annual reports, such as pages 1 to 99 of the Activision Blizzard 10-K in one undivided section.
-- The verification threshold (0.5) was picked on the first few questions.
-- `jev.py` reads page ranges through a private SDK call, because the public `get_document_structure()` returns only start pages in local mode.
+**First, pick a section.** One `Choice` over the top-level sections, each described by its title and summary.
 
-## Reproduce
+```python
+from typesafe_sdk import Choice, TypeSafeClient
+
+typesafe = TypeSafeClient(model="jev-1.13.0")
+question = "What was NVIDIA's total revenue for fiscal year 2026?"
+
+sections = {n["node_id"]: f"{n['title']}. {n.get('summary') or n.get('prefix_summary', '')}" for n in tree}
+
+r = typesafe.system_one(
+    state={"question": question},
+    questions={"section": Choice(
+        instructions="Which section most likely contains the answer to the question?",
+        criteria=sections,
+    )},
+)
+picked = r.answers["section"].choice  # the node_id of the most likely section, e.g. "0003"
+
+ids = [n["node_id"] for n in tree]
+i = ids.index(picked)
+```
+
+**Then, pick a page inside it.** The section runs from its first page to where the next one starts; one `Choice` over those pages, as in flat page search.
+
+```python
+start = tree[i]["page_index"]
+end = tree[i + 1]["page_index"] if i + 1 < len(tree) else pageindex.get_document(doc_id)["pageNum"]
+
+pages = pageindex.get_page_content(doc_id, f"{start}-{end}")
+r = typesafe.system_one(
+    state={"question": question},
+    questions={"page": Choice(
+        instructions="Which page contains the answer to the question?",
+        criteria={f"p{p['page_index']}": p["markdown"] for p in pages},
+    )},
+)
+print(r.answers["page"].choice)  # the page to hand to your LLM
+```
+
+## Going further: deeper trees, top-K search, and checking with `Noul`
+
+The two-step search above is the simplest version. Three changes make it general and sturdier.
+
+**Deeper trees.** A real tree has more than two levels: sections have subsections, which can have their own. The search is the same step repeated: one `Choice` over the children of the section just picked, until a section has no subsections, then one over its pages. Each level keeps the menu short, however long the document. The tree can go one level further, below pages: once a page is picked, one more `Choice` over its lines finds the exact line, as in TypeSafe's [line-by-line search](https://docs.typesafe.ai/cookbooks/semantic_find) cookbook.
+
+**Top-K search.** Taking only the most likely option at each step is brittle: if the right section or page ranks second, it is lost. Instead, keep the top K: the K most likely keys of `probabilities`, not just `choice`. In the tree this is beam search: keep the K best paths at each level, scored by the geometric mean of their step probabilities, as in TypeSafe's [hierarchical classification](https://docs.typesafe.ai/cookbooks/hierarchical_classification) cookbook.
+
+**Checking with `Noul`.** A `Choice` is relative: its probabilities sum to 1, so it always names a winner, even when no option answers the question. A `Noul` is a yes/no question with its own probability, so each candidate page can be judged on its own, with its full text in `state`, and kept or dropped by a threshold:
+
+```python
+from typesafe_sdk import Noul
+
+candidates = [32, 33, 41]  # page numbers from the top K, e.g. the pages of the beam's sections
+kept = []
+for page in pageindex.get_page_content(doc_id, ",".join(map(str, candidates))):
+    r = typesafe.system_one(
+        state={"question": question, "page": page["markdown"]},
+        questions={"answers": Noul(
+            instructions="Does this page state information that answers the question?",
+        )},
+    )
+    if r.answers["answers"].noul >= 0.5:
+        kept.append(page["page_index"])  # pages to hand to your LLM
+```
+
+`jev.py` puts all three together: a beam of 3 down a tree of any depth (with each section's opening text, before its first subsection, as an option too), up to 16 candidate pages taken from the 3 winning sections in turn so that one long section cannot fill the list, and one `Noul` per candidate. Pages at 0.5 or above are kept; if none is, the top 2. Run it on a PDF and a question:
 
 ```bash
-git clone https://github.com/VectifyAI/PageIndex-OSS-Benchmark bench
-git clone https://github.com/VectifyAI/MMLongBench-Doc-V2 mmlb
 pip install -r requirements.txt
-cp .env.example .env              # OPENAI_API_KEY, TYPESAFE_API_KEY
-
-python index_docs.py              # 34 local trees, about $1.6 of gpt-5.6-luna
-python run.py A --out results/A.json
-python run.py B --out results/B.choice.json
-JEV_NAV=noul python run.py B --out results/B.noul.json
-python flat.py                    # flat Choice baseline
-python summarize.py               # judge and tabulate
+export TYPESAFE_API_KEY="..."
+export PAGEINDEX_API_KEY="..."
+python jev.py NVIDIA_2026_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
 ```
+
+It prints the pages it kept and their text.
