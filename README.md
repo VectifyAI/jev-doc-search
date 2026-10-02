@@ -146,7 +146,7 @@ r = typesafe.system_one(
 print(r.answers["page"].choice)  # the most likely page
 ```
 
-This is a *simplified* version to show the idea; the next section covers the full tree search.
+This is a *simplified version* to show the idea; the next section covers the full tree search.
 
 ## The full tree search
 
