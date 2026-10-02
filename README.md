@@ -4,7 +4,7 @@
 </picture>
 
 
-**Find the page that answers a question in a 300-page report with Jev's `Choice` calls. No vector DB or embeddings needed!**
+**Find the answer page in a 300-page report with Jev's `Choice` calls. No vector DB or embeddings needed!**
 
 [Jev](https://docs.typesafe.ai) answers multiple-choice questions: give it the options, and it returns a probability for each. "Which page answers this question?" is one of them, and it works well, until the document outgrows what Jev can read at once. [PageIndex](https://github.com/VectifyAI/PageIndex) removes that limit by turning the document into a hierarchical tree representation. Jev picks a node, then one of its children, and so on down the tree, choosing among a handful of options each time, however long the document.
 
