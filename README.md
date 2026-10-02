@@ -8,9 +8,9 @@
 
 [Jev](https://docs.typesafe.ai) answers multiple-choice questions: give it the options, and it returns a probability for each. "Which page answers this question?" is one of them, and it works well, until the document outgrows what Jev can read at once. [PageIndex](https://github.com/VectifyAI/PageIndex) removes that limit by turning the document into a hierarchical tree representation. Jev picks a node, then one of its children, and so on down the tree, choosing among a handful of options each time, however long the document.
 
-## Page search with Jev's `Choice`
+# Page search with Jev's `Choice`
 
-Page search can be framed as a multiple-choice question. The question is "which page answers this?", and the options are the pages themselves: each page is one option, described by its own text. Jev reads every option and returns a probability for each page; the most likely page is the answer. We call this flat page search: one `Choice`, one option per page.
+Page search can be framed as a multiple-choice question. The question is "which page answers this?", and the options are the pages themselves: each page is one option, described by its own text. Jev reads every option and returns a probability for each page; the most likely page is the answer. We call this flat page search: one [`Choice`](https://docs.typesafe.ai/primitives/choice), one option per page.
 
 <img src="assets/page-search.gif" width="900" alt="Each page is one option of a Choice; Jev returns a probability for every page">
 
@@ -47,7 +47,7 @@ In the code:
 - **`Choice`** is the decision. Its options go in `criteria`: one key per page (`p1`, `p2`, …), each described by that page's text.
 - **The answer** names the most likely page in `choice`, with every page's probability in `probabilities`, summing to 1.
 
-## Why flat page search breaks on long documents
+### Why it breaks on long documents
 
 Flat page search hits two limits, one after the other:
 
@@ -56,7 +56,7 @@ Flat page search hits two limits, one after the other:
 
 [PageIndex](https://github.com/VectifyAI/PageIndex) solves both at once. It turns the flat choice over pages into a tree: the document splits into sections, each with a title and a short summary, and each section into its pages. Jev then makes one small choice per level instead of one huge one, so every `Choice` has only a handful of options and fewer tokens.
 
-## Tree search with PageIndex
+# Tree search with PageIndex
 
 ### 1. Build the tree with PageIndex
 
@@ -146,7 +146,7 @@ r = typesafe.system_one(
 print(r.answers["page"].choice)  # the most likely page
 ```
 
-## Going further: deeper trees, top-K search, and checking with `Noul`
+# Going further: deeper trees, top-K search, and checking with `Noul`
 
 The two-step search above is the simplest version. Three changes make it general and sturdier.
 
@@ -154,7 +154,7 @@ The two-step search above is the simplest version. Three changes make it general
 
 **Top-K search.** Taking only the most likely option at each step is brittle: if the right section or page ranks second, it is lost. Instead, keep the top K: the K most likely keys of `probabilities`, not just `choice`. In the tree this is beam search: keep the K best paths at each level, scored by the geometric mean of their step probabilities, as in TypeSafe's [hierarchical classification](https://docs.typesafe.ai/cookbooks/hierarchical_classification) cookbook.
 
-**Checking with `Noul`.** A `Choice` is relative: its probabilities sum to 1, so it always names a winner, even when no option answers the question. A `Noul` is a yes/no question with its own probability, so each candidate page can be judged on its own, with its full text in `state`, and kept or dropped by a threshold.
+**Checking with `Noul`.** A `Choice` is relative: its probabilities sum to 1, so it always names a winner, even when no option answers the question. A [`Noul`](https://docs.typesafe.ai/primitives/noul) is a yes/no question with its own probability, so each candidate page can be judged on its own, with its full text in `state`, and kept or dropped by a threshold.
 
 [tree_search.py](tree_search.py) puts all three together:
 
@@ -168,7 +168,7 @@ Run it on a PDF and a question:
 python tree_search.py NVIDIA_2026_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
 ```
 
-It uploads the PDF, prints its `doc_id`, then the sections the search ended in and the pages it kept. To ask another question about the same document, pass the `doc_id` instead of the PDF, so it is not uploaded again:
+It uploads the PDF, builds the tree, prints its `doc_id`, then the sections the search ended in and the pages it kept. To ask another question about the same document, pass the `doc_id` instead of the PDF, so it is not uploaded again:
 
 ```bash
 python tree_search.py pi-... "What was NVIDIA's gross margin for fiscal year 2026?"
@@ -183,7 +183,7 @@ On the two annual reports, uploaded to the cloud PageIndex:
 
 Both answers are right: they are the figures in each report's consolidated statement of income (NVIDIA p51, Citigroup p134).
 
-## Setup
+# Setup
 
 ```bash
 pip install -r requirements.txt
@@ -193,6 +193,6 @@ export PAGEINDEX_API_KEY="..."
 
 You can get a TypeSafe key from the [TypeSafe console](https://console.typesafe.ai) and a PageIndex key from the [PageIndex dashboard](https://dash.pageindex.ai/).
 
-## License
+# License
 
 [Apache 2.0](LICENSE)
