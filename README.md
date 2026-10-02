@@ -1,4 +1,8 @@
-# Long-document search with Jev and PageIndex
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark.png">
+  <img src="assets/header-light.png" width="900" alt="Jev × PageIndex">
+</picture>
+
 
 **Find the page that answers a question in a 300-page report with two Jev `Choice` calls. No embeddings needed!**
 
@@ -172,14 +176,12 @@ python tree_search.py pi-... "What was NVIDIA's gross margin for fiscal year 202
 
 On the two annual reports, uploaded to the cloud PageIndex:
 
-| Question | Pages | Answer found on | Answer |
+| Question | Pages | Answer found on | Correct |
 | --- | --- | --- | --- |
-| What was NVIDIA's total revenue for fiscal year 2026? | 93 | p37, p51 | $215,938 million ✓ |
-| What was Citigroup's net income for 2025? | 318 | p12, p16, p134, p135 | $14,306 million ✓ |
+| What was NVIDIA's total revenue for fiscal year 2026? | 93 | p37, p51 | ✓ |
+| What was Citigroup's net income for 2025? | 318 | p12, p16, p134, p135 | ✓ |
 
 Both answers are right: they are the figures in each report's consolidated statement of income (NVIDIA p51, Citigroup p134).
-
-For NVIDIA, the search ended in the Fiscal Year 2026 Summary (p37–38) and kept p37 (`Noul` 0.99), p51 (0.98), and p40 (0.97). For Citigroup, it ended in the Consolidated Statement of Income (p134–135) and kept p12, p16, p134 (0.99), p17, p135 (0.98), and p15 (0.86). The pages kept that do not state the answer are related to it: NVIDIA's p40 gives the income statement as a share of revenue, Citigroup's p15 explains the change in equity, citing $14.3 billion in net income, and its p17 gives the net income of one segment, Services ($7,075 million).
 
 ## Setup
 
