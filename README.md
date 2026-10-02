@@ -51,7 +51,7 @@ In the code:
 
 Flat page search hits two limits, one after the other:
 
-1. **Too many tokens.** Every page's text goes into the request as an option, and the whole request must fit in 32k tokens. That runs out after a few dozen pages. NVIDIA's [10-K for fiscal 2026](https://d18rn0p25nwr6d.cloudfront.net/CIK-0001045810/e361e58a-7483-44f5-bc62-a9080ae6ec72.pdf) has only 93 pages, but its text is about 76k tokens, more than twice what fits.
+1. **Too many tokens.** Every page's text goes into the request as an option, and `state` plus the `Choice` must fit in 32k tokens. That runs out after a few dozen pages. NVIDIA's [10-K for fiscal 2026](https://d18rn0p25nwr6d.cloudfront.net/CIK-0001045810/e361e58a-7483-44f5-bc62-a9080ae6ec72.pdf) has only 93 pages, but its text is about 76k tokens, more than twice what fits.
 2. **Too many options.** A `Choice` takes at most 255 options, so one option per page stops at 255 pages. Some annual reports are longer than that: Citigroup's [10-K for 2025](https://www.citigroup.com/rcs/citigpa/storage/public/citi-2025-10-k-2-20-26.pdf) has 318 pages.
 
 [PageIndex](https://github.com/VectifyAI/PageIndex) solves both at once. It turns the flat choice over pages into a tree: the document splits into sections, each with a title and a short summary, and each section into its pages. Jev then makes one small choice per level instead of one huge one, so every `Choice` has only a handful of options and fewer tokens.
@@ -73,7 +73,7 @@ from pageindex import PageIndexClient
 
 pageindex = PageIndexClient(api_key=os.environ["PAGEINDEX_API_KEY"])
 
-doc_id = pageindex.submit_document("NVIDIA_2026_10K.pdf", wait=True)["doc_id"]
+doc_id = pageindex.submit_document("NVIDIA_10K.pdf", wait=True)["doc_id"]
 tree = pageindex.get_document_structure(doc_id)
 ```
 
@@ -94,7 +94,7 @@ tree = pageindex.get_document_structure(doc_id)
         "node_id": "0005",
         "start_index": 4,
         "end_index": 5,
-        "summary": "This text provides an overview of NVIDIA as a pioneer in accelerated computing…"
+        "summary": "This text provides an overview of NVIDIA as a pioneer in…"
       }
       // … 16 more
     ]
@@ -129,7 +129,7 @@ r = typesafe.system_one(
         criteria=sections,
     )},
 )
-section = get_node(tree, r.answers["section"].choice)  # choice is the picked node_id, e.g. "0004"
+section = get_node(tree, r.answers["section"].choice)  # the picked node_id, e.g. "0004"
 ```
 
 **Then, pick a page inside it.** One `Choice` over the pages of that section, `start_index` to `end_index`, as in flat page search.
@@ -167,7 +167,7 @@ The two-step search above is the simplest version. Going further, three changes 
 Run it on a PDF and a question:
 
 ```bash
-python tree_search.py NVIDIA_2026_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
+python tree_search.py NVIDIA_10K.pdf "What was NVIDIA's total revenue for fiscal year 2026?"
 ```
 
 It uploads the PDF, builds the tree, prints its `doc_id`, then the sections the search ended in and the pages it kept. To ask another question about the same document, pass the `doc_id` instead of the PDF, so it is not uploaded again:
