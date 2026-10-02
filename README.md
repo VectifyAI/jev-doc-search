@@ -135,7 +135,8 @@ section = get_node(tree, r.answers["section"].choice)  # the picked node_id, e.g
 **Then, pick a page inside it.** One `Choice` over the pages of that section, `start_index` to `end_index`, as in flat page search.
 
 ```python
-pages = pageindex.get_page_content(doc_id, f"{section['start_index']}-{section['end_index']}")
+start_index, end_index = section["start_index"], section["end_index"]
+pages = pageindex.get_page_content(doc_id, f"{start_index}-{end_index}")
 r = typesafe.system_one(
     state={"question": question},
     questions={"page": Choice(
