@@ -1,6 +1,3 @@
 .env
-bench/
-mmlb/
 .pageindex/
-doc_ids.json
 __pycache__/
