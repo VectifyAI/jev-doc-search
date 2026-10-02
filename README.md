@@ -146,11 +146,11 @@ r = typesafe.system_one(
 print(r.answers["page"].choice)  # the most likely page
 ```
 
-This is a simplified version to show the idea; the next section covers the full tree search.
+This is a *simplified* version to show the idea; the next section covers the full tree search.
 
-## Going further: deeper trees, top-K search, and checking with `Noul`
+## The full tree search
 
-The two-step search above is the simplest version. Three changes make it general and sturdier.
+The two-step search above is the simplest version. Going further, three changes make it general and sturdier: deeper trees, top-K search, and checking with `Noul`.
 
 **Deeper trees.** A real tree has more than two levels: sections have subsections, which can have their own. The search is the same step repeated: one `Choice` over the children of the section just picked, until a section has no subsections, then one over its pages. Each level keeps the menu short, however long the document. The tree can go one level further, below pages: once a page is picked, one more `Choice` over its lines finds the exact line, as in TypeSafe's [line-by-line search](https://docs.typesafe.ai/cookbooks/semantic_find) cookbook.
 
