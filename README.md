@@ -8,7 +8,7 @@
 
 [Jev](https://docs.typesafe.ai) answers multiple-choice questions: give it the options, and it returns a probability for each. "Which page answers this question?" is one of them, and it works well, until the document outgrows what Jev can read at once. [PageIndex](https://github.com/VectifyAI/PageIndex) removes that limit by turning the document into a hierarchical tree representation. Jev picks a node, then one of its children, and so on down the tree, choosing among a handful of options each time, however long the document.
 
-# Page search with Jev's `Choice`
+## Page search with Jev's `Choice`
 
 Page search can be framed as a multiple-choice question. The question is "which page answers this?", and the options are the pages themselves: each page is one option, described by its own text. Jev reads every option and returns a probability for each page; the most likely page is the answer. We call this flat page search: one [`Choice`](https://docs.typesafe.ai/primitives/choice), one option per page.
 
@@ -47,7 +47,7 @@ In the code:
 - **`Choice`** is the decision. Its options go in `criteria`: one key per page (`p1`, `p2`, …), each described by that page's text.
 - **The answer** names the most likely page in `choice`, with every page's probability in `probabilities`, summing to 1.
 
-### Why it breaks on long documents
+### Why flat page search breaks on long documents
 
 Flat page search hits two limits, one after the other:
 
@@ -56,7 +56,7 @@ Flat page search hits two limits, one after the other:
 
 [PageIndex](https://github.com/VectifyAI/PageIndex) solves both at once. It turns the flat choice over pages into a tree: the document splits into sections, each with a title and a short summary, and each section into its pages. Jev then makes one small choice per level instead of one huge one, so every `Choice` has only a handful of options and fewer tokens.
 
-# Tree search with PageIndex
+## Tree search with PageIndex
 
 ### 1. Build the tree with PageIndex
 
@@ -146,7 +146,7 @@ r = typesafe.system_one(
 print(r.answers["page"].choice)  # the most likely page
 ```
 
-# Going further: deeper trees, top-K search, and checking with `Noul`
+## Going further: deeper trees, top-K search, and checking with `Noul`
 
 The two-step search above is the simplest version. Three changes make it general and sturdier.
 
@@ -183,7 +183,7 @@ On the two annual reports, uploaded to the cloud PageIndex:
 
 Both answers are right: they are the figures in each report's consolidated statement of income (NVIDIA p51, Citigroup p134).
 
-# Setup
+## Setup
 
 ```bash
 pip install -r requirements.txt
@@ -193,6 +193,6 @@ export PAGEINDEX_API_KEY="..."
 
 You can get a TypeSafe key from the [TypeSafe console](https://console.typesafe.ai) and a PageIndex key from the [PageIndex dashboard](https://dash.pageindex.ai/).
 
-# License
+## License
 
 [Apache 2.0](LICENSE)
